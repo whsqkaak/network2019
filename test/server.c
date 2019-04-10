@@ -10,9 +10,16 @@
 #include <string.h>
 #define SMALL_BUF 100
 #define BUF_SIZE 1024
+//free while, 정리
+char *content_type(char*);
 
-char *request_parser(char*);
-char *content_type(char *);
+int file_size(FILE* file){
+  int size;
+  fseek(file, 0, SEEK_END);
+  size = ftell(file);
+  fseek(file, 0, SEEK_SET);
+  return size;
+}
 
 void error(char *msg)
 {
@@ -25,13 +32,13 @@ int main(int argc, char *argv[])
     int sockfd, newsockfd; //descriptors rturn from socket and accept system calls
     int portno; // port number
     socklen_t clilen;
-     
+    FILE* send_file;
+
     char buffer[BUF_SIZE];
     int opt = 1;     
     /*sockaddr_in: Structure Containing an Internet Address*/
     struct sockaddr_in serv_addr, cli_addr;
-     
-    int n;
+    int n, j;
     if (argc < 2) {
         fprintf(stderr,"ERROR, no port provided\n");
         exit(1);
@@ -75,7 +82,7 @@ int main(int argc, char *argv[])
       char method[10];
       char file_name[30];
       char ct[15];
-       
+
       if(strstr(buffer, "HTTP/") == NULL){
         error("No Http.");
       }
@@ -85,45 +92,37 @@ int main(int argc, char *argv[])
       strcpy(ct, content_type(file_name));
       if(strcmp(method, "GET")!=0)
         error("No GET method.");
-       
-      printf("method : %s\n", method);
-      printf("file name : %s\n", file_name);
-      printf("content-type : %s\n\n", ct);       
-       
-      //Make Response header line
-       
-      char response_header[SMALL_BUF];
-      memset(response_header, 0, SMALL_BUF);
-      sprintf(response_header, "HTTP/1.0 200 OK\r\nServer: Linux Web Server \r\nfile name: %s \r\ncontent-type: %s \r\n\r\n", file_name, ct);
-       
-      printf("%s\n", response_header);
-       
-      //Make response data
-      FILE* send_file;
-       
+      
+      char* response_header = (char*)malloc(sizeof(char)*1024);
+
       if(strstr(ct, "text")==NULL){
         send_file = fopen(file_name, "rb");
       }else{
         send_file = fopen(file_name, "r");
       }
-       
-      bzero(buffer, BUF_SIZE); 
-      n = write(newsockfd, response_header, sizeof(response_header));
-       
+      int size_file = file_size(send_file);
+
+      j = sprintf(response_header, "HTTP/1.1 200 OK\n");
+      j += sprintf(response_header + j, "Server : Apache\n");
+      j += sprintf(response_header + j, "Content-Type: %s\n", ct);
+      j += sprintf(response_header + j, "Content-Length: %d\n\n", size_file);
+      bzero(buffer, BUF_SIZE);
+      n = write(newsockfd, response_header, strlen(response_header));
+      
       while(feof(send_file) == 0){
         n = fread(buffer, 1, BUF_SIZE, send_file);
 	if(n < 0) error("File Receive Error");
         if(n == 0) break;
-	 
-        printf("%s\n", buffer);
-	 
-        n = write(newsockfd, buffer, BUF_SIZE);
-        if(n < 0) error("File Write Error");
+        
+	n = send(newsockfd, buffer, BUF_SIZE, 0);
+	if(n < 0) error("File Write Error");
        
         bzero(buffer, BUF_SIZE);
       }
       bzero(buffer, BUF_SIZE);
       if (n < 0) error("Write error");
+      
+      free(response_header);
       fclose(send_file);
     }
     close(sockfd);
