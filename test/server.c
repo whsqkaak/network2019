@@ -35,10 +35,11 @@ int main(int argc, char *argv[])
     FILE* send_file;
 
     char buffer[BUF_SIZE];
-    int opt = 1;     
     /*sockaddr_in: Structure Containing an Internet Address*/
     struct sockaddr_in serv_addr, cli_addr;
     int n, j;
+    int opt = 1;
+
     if (argc < 2) {
         fprintf(stderr,"ERROR, no port provided\n");
         exit(1);
@@ -69,19 +70,24 @@ int main(int argc, char *argv[])
      
     listen(sockfd,5); // Listen for socket connections. Backlog queue (connections to wait) is 5
      
-    clilen = sizeof(cli_addr);
     while(1){
+      clilen = sizeof(cli_addr);
+      printf("accept\n");
       newsockfd = accept(sockfd, (struct sockaddr *) &cli_addr, &clilen);
       if (newsockfd < 0) 
            error("ERROR on accept");
-      memset(buffer, 0, BUF_SIZE); 
+      printf("After accept\n");
+      bzero(buffer, BUF_SIZE); 
       n = read(newsockfd,buffer,255); //Read is a block function. It will read at most 255 bytes
       if (n < 0) error("ERROR reading from socket");
-       
+      printf("%s\n", buffer); 
+      
       //Request parsing
       char method[10];
       char file_name[30];
       char ct[15];
+      char* response_header;
+      int size_file;
 
       if(strstr(buffer, "HTTP/") == NULL){
         error("No Http.");
@@ -93,19 +99,21 @@ int main(int argc, char *argv[])
       if(strcmp(method, "GET")!=0)
         error("No GET method.");
       
-      char* response_header = (char*)malloc(sizeof(char)*1024);
+      response_header = (char*)malloc(sizeof(char)*1024);
 
       if(strstr(ct, "text")==NULL){
         send_file = fopen(file_name, "rb");
       }else{
         send_file = fopen(file_name, "r");
       }
-      int size_file = file_size(send_file);
+
+      size_file = file_size(send_file);
 
       j = sprintf(response_header, "HTTP/1.1 200 OK\n");
       j += sprintf(response_header + j, "Server : Apache\n");
       j += sprintf(response_header + j, "Content-Type: %s\n", ct);
       j += sprintf(response_header + j, "Content-Length: %d\n\n", size_file);
+      
       bzero(buffer, BUF_SIZE);
       n = write(newsockfd, response_header, strlen(response_header));
       
@@ -114,7 +122,7 @@ int main(int argc, char *argv[])
 	if(n < 0) error("File Receive Error");
         if(n == 0) break;
         
-	n = send(newsockfd, buffer, BUF_SIZE, 0);
+	n = write(newsockfd, buffer, BUF_SIZE);
 	if(n < 0) error("File Write Error");
        
         bzero(buffer, BUF_SIZE);
@@ -124,6 +132,7 @@ int main(int argc, char *argv[])
       
       free(response_header);
       fclose(send_file);
+      close(newsockfd);
     }
     close(sockfd);
     close(newsockfd);
@@ -149,6 +158,8 @@ char *content_type(char *file){
     return "image/png";
   else if(!strcmp(extension, "pdf"))
     return "application/pdf";
+  else if(!strcmp(extension, "ico"))
+    return "image/x-icon";
   else
     return "text/plain";
 }
